@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'scripts/**', 'design_screens/**']
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump (auto = decide from commit messages)
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+
+concurrency:
+  group: release
+  cancel-in-progress: false      # never cancel a release in progress
+
+permissions:
+  contents: write                # push the version commit + tag, create the Release
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4
+
+jobs:
+  release:
+    name: Version, build & release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }          # full history + tags, needed to compute the version
+
+      - name: Decide version
+        id: version
+        uses: ./.github/actions/release
+        with:
+          stage: prepare
+          publish: 'true'
+          bump: ${{ inputs.bump || 'auto' }}
+          keystore-base64: ${{ secrets.KEYSTORE_BASE64 }}
+          keystore-password: ${{ secrets.KEYSTORE_PASSWORD }}
+          key-alias: ${{ secrets.KEY_ALIAS }}
+          key-password: ${{ secrets.KEY_PASSWORD }}
+
+      - uses: actions/setup-java@v5
+        if: ${{ steps.version.outputs.should_release == 'true' }}
+        with: { distribution: temurin, java-version: '21' }
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: ${{ steps.version.outputs.should_release == 'true' }}
+
+      - name: Build and release
+        uses: ./.github/actions/release
+        with:
+          stage: release
+          publish: 'true'
+          should-release: ${{ steps.version.outputs.should_release }}
+          bump: ${{ inputs.bump || 'auto' }}
+          keystore-password: ${{ secrets.KEYSTORE_PASSWORD }}
+          key-alias: ${{ secrets.KEY_ALIAS }}
+          key-password: ${{ secrets.KEY_PASSWORD }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remove keystore
+        if: ${{ always() }}
+        run: rm -f "$RUNNER_TEMP/keystore.jks"

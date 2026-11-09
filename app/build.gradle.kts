@@ -4,6 +4,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val releaseStoreFile: String? =
+    project.findProperty("RELEASE_STORE_FILE") as String? ?: System.getenv("RELEASE_STORE_FILE")
+val hasReleaseKeystore = releaseStoreFile != null && file(releaseStoreFile).exists()
+
 android {
     namespace = "com.ekoehler.expressivecutout"
     compileSdk = 35
@@ -16,8 +20,23 @@ android {
         versionName = "0.4.0-beta"
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseKeystore) {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = project.findProperty("RELEASE_STORE_PASSWORD") as String?
+                    ?: System.getenv("RELEASE_STORE_PASSWORD")
+                keyAlias = project.findProperty("RELEASE_KEY_ALIAS") as String?
+                    ?: System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = project.findProperty("RELEASE_KEY_PASSWORD") as String?
+                    ?: System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName(if (hasReleaseKeystore) "release" else "debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

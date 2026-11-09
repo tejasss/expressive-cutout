@@ -1,0 +1,62 @@
+name: Release
+description: Decide the next version (prepare) or build, sign and publish it (release).
+
+inputs:
+  stage:
+    description: "prepare = decide version and validate secrets; release = build and publish"
+    required: true
+  publish:
+    description: "'true' to commit, tag and publish; anything else stops after the build"
+    default: 'false'
+  should-release:
+    description: Output of the prepare stage
+    default: 'false'
+  bump:
+    description: auto, patch, minor or major
+    default: auto
+  keystore-base64:
+    description: Base64 of the release keystore (prepare stage)
+    default: ''
+  keystore-password:
+    default: ''
+  key-alias:
+    default: ''
+  key-password:
+    default: ''
+  github-token:
+    default: ''
+
+outputs:
+  should_release:
+    description: "'true' when a release is due"
+    value: ${{ steps.plan.outputs.should_release }}
+  version:
+    description: Next version, without the leading v
+    value: ${{ steps.plan.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Plan
+      id: plan
+      if: ${{ inputs.stage == 'prepare' }}
+      shell: bash
+      env:
+        BUMP: ${{ inputs.bump }}
+        KEYSTORE_BASE64: ${{ inputs.keystore-base64 }}
+        KEYSTORE_PASSWORD: ${{ inputs.keystore-password }}
+        KEY_ALIAS: ${{ inputs.key-alias }}
+        KEY_PASSWORD: ${{ inputs.key-password }}
+      run: bash "$GITHUB_ACTION_PATH/release.sh" --prepare
+
+    - name: Build, sign and release
+      if: ${{ inputs.stage == 'release' && inputs.should-release == 'true' }}
+      shell: bash
+      env:
+        BUMP: ${{ inputs.bump }}
+        PUBLISH: ${{ inputs.publish }}
+        RELEASE_STORE_PASSWORD: ${{ inputs.keystore-password }}
+        RELEASE_KEY_ALIAS: ${{ inputs.key-alias }}
+        RELEASE_KEY_PASSWORD: ${{ inputs.key-password }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: bash "$GITHUB_ACTION_PATH/release.sh" --release
